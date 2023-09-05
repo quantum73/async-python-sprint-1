@@ -1,0 +1,15 @@
+[tool.mypy]
+python_version = "3.11"
+exclude = [
+    'venv',
+    '.venv',
+    'env',
+    '.env',
+    'tests',
+    'external/analyzer.py',
+    'external/api_test.py',
+    'external/forecasting.py',
+]
+
+[tool.pytest.ini_options]
+addopts = "--strict-markers --tb=line -s -v -p no:cacheprovider"

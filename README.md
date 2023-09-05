@@ -9,7 +9,7 @@
 <details>
 <summary> Описание </summary>
 
-Список городов находится в переменной `CITIES` в файле [utils.py](utils.py). Для взаимодействия с API используйте готовый класс `YandexWeatherAPI` в модуле `external/client.py`. Пример работы с классом `YandexWeatherAPI` описан в <a href="#apiusingexample">примере</a>. Пример ответа от API для анализа вы найдёте в [файле](examples/response.json).
+Список городов находится в переменной `CITIES` в файле [utils.py](src/external/utils.py). Для взаимодействия с API используйте готовый класс `YandexWeatherAPI` в модуле `external/client.py`. Пример работы с классом `YandexWeatherAPI` описан в <a href="#apiusingexample">примере</a>. Пример ответа от API для анализа вы найдёте в [файле](examples/response.json).
 
 </details>
 
@@ -77,7 +77,7 @@ python3 external/analyzer.py -i examples/response.json -o output.json
 
 1. Используйте для решения как процессы, так и потоки. Для этого разделите все задачи по их типу – IO-bound или CPU-bound.
 2. Используйте для решения и очередь, и пул задач.
-3. Опишите этапы решения в виде отдельных классов в модуле [tasks.py](tasks.py):
+3. Опишите этапы решения в виде отдельных классов в модуле [tasks.py](src/tasks.py):
   - `DataFetchingTask` — получение данных через API;
   - `DataCalculationTask` — вычисление погодных параметров;
   - `DataAggregationTask` — объединение вычисленных данных;
@@ -103,8 +103,8 @@ python3 external/analyzer.py -i examples/response.json -o output.json
 ## Пример использования `YandexWeatherAPI` для работы с API
 
 ```python
-from external.client import YandexWeatherAPI
-from utils import get_url_by_city_name
+from external import YandexWeatherAPI
+from external.utils import get_url_by_city_name
 
 city_name = "MOSCOW"
 url_with_data = get_url_by_city_name(city_name)

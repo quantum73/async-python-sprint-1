@@ -1,15 +1,12 @@
-import subprocess
-
-
 def check_python_version():
-    from utils import check_python_version
+    from external.utils import check_python_version
 
     check_python_version()
 
 
 def check_api():
     from external.client import YandexWeatherAPI
-    from utils import get_url_by_city_name
+    from external.utils import get_url_by_city_name
 
     CITY_NAME_FOR_TEST = "MOSCOW"
 

@@ -6,8 +6,8 @@ from functools import reduce
 from operator import getitem
 from typing import Optional, List, Dict
 
-PATH_FROM_INPUT = "./../examples/response.json"
-PATH_TO_OUTPUT = "./../examples/output.json"
+PATH_FROM_INPUT = "../../examples/response.json"
+PATH_TO_OUTPUT = "../../examples/output.json"
 
 INPUT_FORECAST_PATH = "forecasts"
 INPUT_DATE_PATH = "date"

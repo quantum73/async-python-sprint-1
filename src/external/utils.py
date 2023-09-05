@@ -1,3 +1,9 @@
+import time
+from typing import Callable, Any
+
+from config import root_logger
+from external.exceptions import CityKeyError
+
 CITIES = {
     "MOSCOW": "https://code.s3.yandex.net/async-module/moscow-response.json",
     "PARIS": "https://code.s3.yandex.net/async-module/paris-response.json",
@@ -14,7 +20,6 @@ CITIES = {
     "BUCHAREST": "https://code.s3.yandex.net/async-module/bucharest-response.json",
     "ROMA": "https://code.s3.yandex.net/async-module/roma-response.json",
     "CAIRO": "https://code.s3.yandex.net/async-module/cairo-response.json",
-
     "GIZA": "https://code.s3.yandex.net/async-module/giza-response.json",
     "MADRID": "https://code.s3.yandex.net/async-module/madrid-response.json",
     "TORONTO": "https://code.s3.yandex.net/async-module/toronto-response.json"
@@ -28,8 +33,8 @@ def check_python_version():
     import sys
 
     if (
-        sys.version_info.major < MIN_MAJOR_PYTHON_VER
-        or sys.version_info.minor < MIN_MINOR_PYTHON_VER
+            sys.version_info.major < MIN_MAJOR_PYTHON_VER
+            or sys.version_info.minor < MIN_MINOR_PYTHON_VER
     ):
         raise Exception(
             "Please use python version >= {}.{}".format(
@@ -42,4 +47,15 @@ def get_url_by_city_name(city_name):
     try:
         return CITIES[city_name]
     except KeyError:
-        raise Exception("Please check that city {} exists".format(city_name))
+        raise CityKeyError("Please check that city {} exists".format(city_name))
+
+
+def timer(func: Callable) -> Callable:
+    def wrapper(*args, **kwargs) -> Any:
+        start = time.time()
+        result = func(*args, **kwargs)
+        elapsed_time = time.time() - start
+        root_logger.info(f"Elapsed {func.__name__} function time: {elapsed_time:.3f}")
+        return result
+
+    return wrapper
