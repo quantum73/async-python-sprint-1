@@ -1,11 +1,18 @@
 import json
+import logging
+import subprocess
 from concurrent.futures import ThreadPoolExecutor
+from multiprocessing import cpu_count
+from multiprocessing.pool import Pool
+from pathlib import Path
 from typing import Mapping, Sequence
 
 from config import (root_logger, UNEXPECTED_ERROR_MESSAGE_TEMPLATE, BAD_DATA_FROM_RESPONSE_MESSAGE_TEMPLATE,
-                    API_ERROR_MESSAGE_TEMPLATE, BAD_REQUEST_MESSAGE_TEMPLATE, SAVE_JSON_DIR)
+                    API_ERROR_MESSAGE_TEMPLATE, BAD_REQUEST_MESSAGE_TEMPLATE, SAVE_JSON_DIR, ANALYZE_DIR,
+                    ANALYZE_COMMAND_ERROR_MESSAGE_TEMPLATE)
 from external import YandexWeatherAPI
-from external.exceptions import CityKeyError, InvalidResponseDataError, BadRequestError, ConnectionApiError
+from external.exceptions import CityKeyError, InvalidResponseDataError, BadRequestError, ConnectionApiError, \
+    AnalyzeError
 from external.schemas import Weather
 from external.utils import get_url_by_city_name, CITIES, timer
 
@@ -78,7 +85,44 @@ class DataFetchingTask:
 
 
 class DataCalculationTask:
-    pass
+    @staticmethod
+    def _run_analyze_command(weather_data_path: Path) -> None:
+        output_analyze_path = ANALYZE_DIR / weather_data_path.name
+        logging.warning(weather_data_path)
+        logging.warning(output_analyze_path)
+        string_command = "python3 external/analyzer.py -i {path_to_weather_data} -o {output_analyze_path}".format(
+            path_to_weather_data=weather_data_path,
+            output_analyze_path=output_analyze_path,
+        )
+        command = string_command.split()
+        process = subprocess.Popen(command, stdout=subprocess.PIPE)
+        output, err = process.communicate()
+        exit_code = process.wait()
+        if err is not None or exit_code != 0:
+            raise AnalyzeError(ANALYZE_COMMAND_ERROR_MESSAGE_TEMPLATE.format(error=err, exit_code=exit_code))
+
+    @staticmethod
+    def _get_json_paths_with_weather_data() -> list[Path]:
+        return list(SAVE_JSON_DIR.rglob('*'))
+
+    @staticmethod
+    def _analyzing_weather(weather_data_path: Path) -> None:
+        try:
+            DataCalculationTask._run_analyze_command(weather_data_path=weather_data_path)
+        except AnalyzeError as err:
+            root_logger.error(err)
+        except Exception as err:
+            root_logger.error(UNEXPECTED_ERROR_MESSAGE_TEMPLATE.format(error=err))
+
+    @classmethod
+    def calculate_weather(cls) -> None:
+        root_logger.info("Start analyzing weather data to...")
+        json_paths_with_weather_data = DataCalculationTask._get_json_paths_with_weather_data()
+        processes = cpu_count() - 1
+        with Pool(processes=processes) as pool:
+            pool.map(DataCalculationTask._analyzing_weather, json_paths_with_weather_data)
+
+        root_logger.info("Analyzing weather done!")
 
 
 class DataAggregationTask:
@@ -95,6 +139,8 @@ def main():
     weather_data = DataFetchingTask.fetching_weather_data()
     DataFetchingTask.save_weather_data(weather_data=weather_data)
     # Calculation
+    DataCalculationTask.calculate_weather()
+    # Aggregation
 
 
 if __name__ == '__main__':

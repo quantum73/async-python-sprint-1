@@ -75,7 +75,7 @@ class TestDataFetchingTask:
         weather = DataFetchingTask._get_weather_by_city(city_name="PARIS")
         assert isinstance(weather, Weather)
         assert weather.city == "PARIS"
-        assert weather.weather_data is None
+        assert weather.weather_data == {}
 
     @patch("tasks.DataFetchingTask._get_url_by_city")
     @patch("tasks.DataFetchingTask._get_weather_from_api")

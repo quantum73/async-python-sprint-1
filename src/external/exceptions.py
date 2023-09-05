@@ -12,3 +12,7 @@ class ConnectionApiError(Exception):
 
 class InvalidResponseDataError(Exception):
     pass
+
+
+class AnalyzeError(Exception):
+    pass

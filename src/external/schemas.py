@@ -5,4 +5,4 @@ from typing import Mapping
 @dataclass(slots=True)
 class Weather:
     city: str
-    weather_data: Mapping | None = field(default=None)
+    weather_data: Mapping | None = field(default_factory=dict)
