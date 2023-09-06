@@ -7,8 +7,10 @@ SAVE_JSON_DIR = Path("./weather_data")
 ANALYZE_DIR = Path("./analyze_data")
 SAVE_JSON_DIR.mkdir(parents=True, exist_ok=True)
 ANALYZE_DIR.mkdir(parents=True, exist_ok=True)
+AGGREGATED_DATA_CSV_PATH = Path("./aggregated_data.csv")
 
 UNEXPECTED_ERROR_MESSAGE_TEMPLATE = "Unexpected error: {error}"
+KEY_ERROR_MESSAGE_TEMPLATE = "Dictionary key does not exist: {error}"
 BAD_DATA_FROM_RESPONSE_MESSAGE_TEMPLATE = "Bad JSON data from response: {error}"
 BAD_REQUEST_MESSAGE_TEMPLATE = "Bad API request: {error}"
 API_ERROR_MESSAGE_TEMPLATE = "Something wrong with API: {error}"
