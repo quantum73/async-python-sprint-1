@@ -1,5 +1,5 @@
 import json
-import logging
+import os
 import subprocess
 from concurrent.futures import ThreadPoolExecutor
 from multiprocessing import cpu_count
@@ -88,8 +88,6 @@ class DataCalculationTask:
     @staticmethod
     def _run_analyze_command(weather_data_path: Path) -> None:
         output_analyze_path = ANALYZE_DIR / weather_data_path.name
-        logging.warning(weather_data_path)
-        logging.warning(output_analyze_path)
         string_command = "python3 external/analyzer.py -i {path_to_weather_data} -o {output_analyze_path}".format(
             path_to_weather_data=weather_data_path,
             output_analyze_path=output_analyze_path,
@@ -103,7 +101,7 @@ class DataCalculationTask:
 
     @staticmethod
     def _get_json_paths_with_weather_data() -> list[Path]:
-        return list(SAVE_JSON_DIR.rglob('*'))
+        return [SAVE_JSON_DIR / fn for fn in os.listdir(SAVE_JSON_DIR)]
 
     @staticmethod
     def _analyzing_weather(weather_data_path: Path) -> None:

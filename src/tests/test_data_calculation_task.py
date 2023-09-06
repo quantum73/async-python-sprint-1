@@ -10,24 +10,14 @@ from tasks import DataCalculationTask
 
 
 class TestDataCalculationTask:
-    @pytest.fixture(autouse=True)
-    def temp_dirs(self, tmpdir):
-        temp_weather_data_dir = tmpdir.mkdir("weather_data")
-        temp_analyze_data_dir = tmpdir.mkdir("analyze_data")
-        temp_file_1 = temp_weather_data_dir.join("1.json")
-        temp_file_2 = temp_weather_data_dir.join("2.json")
-        temp_file_1.write("{}")
-        temp_file_2.write("{}")
-        return Path(temp_weather_data_dir), Path(temp_analyze_data_dir)
-
     def test_get_json_paths_with_weather_data(self, temp_dirs):
         temp_weather_data_dir, temp_analyze_data_dir = temp_dirs
         file_names = os.listdir(temp_weather_data_dir)
         temp_file_1 = temp_weather_data_dir / file_names[0]
         temp_file_2 = temp_weather_data_dir / file_names[1]
+        target_result = [temp_file_1, temp_file_2]
 
-        with patch('tasks.SAVE_JSON_DIR', temp_weather_data_dir):
-            target_result = [temp_file_1, temp_file_2]
+        with patch("tasks.SAVE_JSON_DIR", temp_weather_data_dir):
             result = DataCalculationTask._get_json_paths_with_weather_data()
 
             assert isinstance(result, list)
@@ -36,10 +26,11 @@ class TestDataCalculationTask:
     def test_run_analyze_command(self, temp_dirs):
         temp_weather_data_dir, temp_analyze_data_dir = temp_dirs
         target_weather_path = temp_weather_data_dir / os.listdir(temp_weather_data_dir)[0]
-        with patch('tasks.ANALYZE_DIR', temp_analyze_data_dir):
+
+        with patch("tasks.ANALYZE_DIR", temp_analyze_data_dir):
             DataCalculationTask._run_analyze_command(weather_data_path=target_weather_path)
 
-        assert len(os.listdir(temp_analyze_data_dir)) == 1
+            assert len(os.listdir(temp_analyze_data_dir)) == 1
 
     @patch("subprocess.Popen")
     def test_run_analyze_command_with_error(self, mocked_popen, temp_dirs):
@@ -50,11 +41,11 @@ class TestDataCalculationTask:
 
         temp_weather_data_dir, temp_analyze_data_dir = temp_dirs
         target_weather_path = temp_weather_data_dir / os.listdir(temp_weather_data_dir)[0]
-        with patch('tasks.ANALYZE_DIR', temp_analyze_data_dir):
-            with pytest.raises(AnalyzeError) as err:
-                DataCalculationTask._run_analyze_command(weather_data_path=target_weather_path)
 
-            assert str(err.value) == ANALYZE_COMMAND_ERROR_MESSAGE_TEMPLATE.format(error="error", exit_code=1)
+        with pytest.raises(AnalyzeError) as err:
+            DataCalculationTask._run_analyze_command(weather_data_path=target_weather_path)
+
+        assert str(err.value) == ANALYZE_COMMAND_ERROR_MESSAGE_TEMPLATE.format(error="error", exit_code=1)
 
     @patch("tasks.DataCalculationTask._run_analyze_command")
     def test_analyzing_weather(self, mock_run_analyze_command):
@@ -74,7 +65,11 @@ class TestDataCalculationTask:
         weather_data_path = Path("some/weather/path.json")
         assert DataCalculationTask._analyzing_weather(weather_data_path=weather_data_path) is None
 
-    def test_calculate_weather(self, mock_analyze_dir, mock_data_dir, temp_dirs):
-        # TODO: ?
+    def test_calculate_weather(self, temp_dirs):
+        temp_weather_data_dir, temp_analyze_data_dir = temp_dirs
+        with patch("tasks.SAVE_JSON_DIR", temp_weather_data_dir):
+            with patch("tasks.ANALYZE_DIR", temp_analyze_data_dir):
+                DataCalculationTask.calculate_weather()
 
-        DataCalculationTask.calculate_weather()
+                assert len(os.listdir(temp_weather_data_dir)) == 2
+                assert len(os.listdir(temp_analyze_data_dir)) == 2
