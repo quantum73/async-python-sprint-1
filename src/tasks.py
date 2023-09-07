@@ -5,7 +5,7 @@ from concurrent.futures import ThreadPoolExecutor
 from multiprocessing import cpu_count
 from multiprocessing.pool import Pool
 from pathlib import Path
-from typing import Mapping, Sequence
+from typing import Mapping, Sequence, Any
 
 import pandas as pd
 
@@ -17,6 +17,10 @@ from external.exceptions import (CityKeyError, InvalidResponseDataError, BadRequ
                                  AnalyzeError)
 from external.schemas import Weather, Statistic
 from external.utils import get_url_by_city_name, CITIES, timer
+
+
+def _filter_func_by_rating(x: Any) -> int:
+    return int(x.iloc[0, -1])
 
 
 class DataFetchingTask:
@@ -194,7 +198,7 @@ class DataAggregationTask:
         average_df = dataframe.mean(axis=1, numeric_only=True, skipna=True)
         average_values = average_df.to_list()
         avg_temp, avg_cond = round(average_values[0], 2), round(average_values[1], 2)
-        rating = round(avg_temp / avg_cond)
+        rating = round((avg_temp + avg_cond) / 2)
         stat = Statistic(
             average_temperature=avg_temp,
             average_cond=avg_cond,
@@ -207,28 +211,39 @@ class DataAggregationTask:
         if days_data is None:
             return None
 
+        # Create column and index names
         city_name = path_to_data.stem.capitalize()
         multiple_index = self._create_multiple_index_by_city(city_name=city_name)
         columns = [item.get("date") for item in days_data]
+        # Create data
         temp_data = [pd.NA if item.get("temp_avg") is None else item.get("temp_avg") for item in days_data]
         cond_data = [pd.NA if item.get("temp_avg") is None else item.get("relevant_cond_hours") for item in days_data]
         dataframe = pd.DataFrame([temp_data, cond_data], columns=columns, index=multiple_index)
-
+        # Calculate average values and rating
         statistic = self._calculate_statistic(dataframe=dataframe)
         dataframe[self.AVERAGE_COLUMN_NAME] = [statistic.average_temperature, statistic.average_cond]
         dataframe[self.RATING_COLUMN_NAME] = [statistic.rating, pd.NA]
 
         return dataframe
 
+    def _clear_dataframe_sequence_from_none(self, dataframes: Sequence[pd.DataFrame | None]) -> Sequence[pd.DataFrame]:
+        # На использование такой конструкции -> list(filter(_filter_func_replace_none, dataframes))
+        # ругался mypy, я долго гугли и карпел, но не смог найти решения. Поэтому закостылил)
+        result = []
+        for df in dataframes:
+            if isinstance(df, pd.DataFrame):
+                result.append(df)
+        return result
+
     def aggregate_analyze_data(self) -> Sequence[pd.DataFrame]:
         analyzed_weather_data_paths = self._get_analyzed_weather_data_paths()
         with ThreadPoolExecutor(max_workers=self._threads_count) as pool:
-            pool_results = pool.map(self._create_dataframe, analyzed_weather_data_paths)
-            city_dataframes = list(filter(lambda x: x is not None, pool_results))
+            pool_results = list(pool.map(self._create_dataframe, analyzed_weather_data_paths))
+            city_dataframes = self._clear_dataframe_sequence_from_none(dataframes=pool_results)
             return city_dataframes
 
     def save_aggregated_data(self, aggregated_data: Sequence[pd.DataFrame]) -> None:
-        sorted_aggregated_data = sorted(aggregated_data, key=lambda x: x.iloc[0, -1], reverse=True)
+        sorted_aggregated_data = sorted(aggregated_data, key=_filter_func_by_rating, reverse=True)
         result_df = pd.concat(sorted_aggregated_data, axis=0)
         result_df.to_csv(self._output_csv_path, sep=";", float_format='%.3f', decimal=",")
 
@@ -236,10 +251,17 @@ class DataAggregationTask:
 class DataAnalyzingTask:
     CONCLUSION_TEMPLATE = "Города благоприятные для поездки:\n{city_names}"
 
+    @staticmethod
+    def _get_rating_from_dataframe(dataframe: pd.DataFrame) -> int:
+        rating = dataframe.iloc[0, -1]
+        if not isinstance(rating, (int, float)):
+            return 0
+        return round(rating)
+
     @classmethod
     def _get_max_rating(cls, aggregated_data: Sequence[pd.DataFrame]) -> int:
-        dataframe_wih_max_rating = max(aggregated_data, key=lambda x: x.iloc[0, -1])
-        max_rating = dataframe_wih_max_rating.iloc[0, -1]
+        dataframe_wih_max_rating = max(aggregated_data, key=_filter_func_by_rating)
+        max_rating = cls._get_rating_from_dataframe(dataframe=dataframe_wih_max_rating)
         return max_rating
 
     @classmethod
@@ -253,7 +275,7 @@ class DataAnalyzingTask:
     @classmethod
     def _get_city_name_from_dataframe(cls, dataframe: pd.DataFrame) -> str:
         index_values = dataframe.index.get_level_values(0)
-        city = index_values[index_values.notna()].values[0]
+        city = str(index_values[index_values.notna()].values[0])
         return city
 
     @classmethod
@@ -273,7 +295,10 @@ def main():
     weather_data = data_fetching_task.fetching_weather_data()
     data_fetching_task.save_weather_data(weather_data=weather_data)
     # Calculation
-    data_calculation_task = DataCalculationTask()
+    data_calculation_task = DataCalculationTask(
+        input_weather_data_dir=SAVE_JSON_DIR,
+        output_analyze_dir=ANALYZE_DIR,
+    )
     data_calculation_task.calculate_weather()
     # Aggregation
     data_aggregation_task = DataAggregationTask(input_analyze_dir=ANALYZE_DIR)
