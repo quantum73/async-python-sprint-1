@@ -2,7 +2,6 @@ import os
 
 
 class TestDataCalculationTask:
-
     def test_calculate_weather(self, data_calculation_task_instance):
         data_calculation_task_instance.calculate_weather()
 

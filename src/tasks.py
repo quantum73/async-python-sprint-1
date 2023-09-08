@@ -2,6 +2,7 @@ import json
 import os
 import subprocess
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass, field
 from multiprocessing import cpu_count
 from multiprocessing.pool import Pool
 from pathlib import Path
@@ -9,75 +10,31 @@ from typing import Mapping, Sequence, Any
 
 import pandas as pd
 
-from config import (root_logger, UNEXPECTED_ERROR_MESSAGE_TEMPLATE, BAD_DATA_FROM_RESPONSE_MESSAGE_TEMPLATE,
-                    API_ERROR_MESSAGE_TEMPLATE, BAD_REQUEST_MESSAGE_TEMPLATE, SAVE_JSON_DIR, ANALYZE_DIR,
+from config import (root_logger, UNEXPECTED_ERROR_MESSAGE_TEMPLATE, SAVE_JSON_DIR,
                     ANALYZE_COMMAND_ERROR_MESSAGE_TEMPLATE, KEY_ERROR_MESSAGE_TEMPLATE, AGGREGATED_DATA_CSV_PATH)
-from external import YandexWeatherAPI
-from external.exceptions import (CityKeyError, InvalidResponseDataError, BadRequestError, ConnectionApiError,
-                                 AnalyzeError)
+from external.exceptions import (AnalyzeError)
+from external.forecasting import ForecastWeatherSource, YandexWeatherAPIForecastWeatherSource
 from external.schemas import Weather, Statistic
-from external.utils import get_url_by_city_name, CITIES, timer
+from external.utils import CITIES, timer
 
 
 def _filter_func_by_rating(x: Any) -> int:
     return int(x.iloc[0, -1])
 
 
+@dataclass
 class DataFetchingTask:
-    def __init__(self, *, output_weather_data_dir: Path, cities: Mapping = CITIES) -> None:
-        self._output_weather_data_dir = output_weather_data_dir
-        self._cities = cities
-
-    @property
-    def output_weather_data_dir(self) -> Path:
-        return self._output_weather_data_dir
-
-    def _get_url_by_city(self, city_name: str) -> str | None:
-        data_url = None
-        try:
-            data_url = get_url_by_city_name(city_name)
-        except CityKeyError:
-            root_logger.error(f"\"{city_name}\" not found in cities")
-        except Exception as err:
-            root_logger.error(UNEXPECTED_ERROR_MESSAGE_TEMPLATE.format(error=err))
-
-        return data_url
-
-    def _get_weather_from_api(self, api_url: str) -> Mapping | None:
-        weather_data = None
-        try:
-            weather_data = YandexWeatherAPI.get_forecasting(api_url)
-        except ConnectionApiError as err:
-            root_logger.error(API_ERROR_MESSAGE_TEMPLATE.format(error=err))
-        except BadRequestError as err:
-            root_logger.error(BAD_REQUEST_MESSAGE_TEMPLATE.format(error=err))
-        except InvalidResponseDataError as err:
-            root_logger.error(BAD_DATA_FROM_RESPONSE_MESSAGE_TEMPLATE.format(error=err))
-        except Exception as err:
-            root_logger.error(UNEXPECTED_ERROR_MESSAGE_TEMPLATE.format(error=err))
-
-        return weather_data
+    output_weather_data_dir: Path
+    cities: Mapping = field(default_factory=lambda: CITIES)
+    weather_source: ForecastWeatherSource = YandexWeatherAPIForecastWeatherSource
 
     def _get_weather_by_city(self, city_name: str) -> Weather:
-        weather = Weather(city=city_name)
-        data_url = self._get_url_by_city(city_name=city_name)
-        if data_url is None:
-            return weather
-
-        city_weather_data = self._get_weather_from_api(api_url=data_url)
-        weather.weather_data = city_weather_data
+        city_weather_data = self.weather_source.get_weather_by_city(city_name=city_name)
+        weather = Weather(city=city_name, weather_data=city_weather_data)
         return weather
 
-    def fetching_weather_data(self) -> Sequence[Weather]:
-        root_logger.info("Fetching weather data from API...")
-        with ThreadPoolExecutor() as pool:
-            results = list(pool.map(self._get_weather_by_city, self._cities.keys()))
-
-        root_logger.info("Weather data from API received!")
-        return results
-
     def _save_weather_data_to_json(self, weather: Weather) -> None:
-        save_path = self._output_weather_data_dir / f"{weather.city}.json"
+        save_path = self.output_weather_data_dir / f"{weather.city}.json"
         weather_data = weather.weather_data
         if weather_data is None:
             return
@@ -85,35 +42,29 @@ class DataFetchingTask:
         json_as_string = json.dumps(weather_data, ensure_ascii=False, indent=4)
         save_path.write_text(json_as_string, encoding="utf8")
 
+    def fetching_weather_data(self) -> Sequence[Weather]:
+        root_logger.info("Fetching weather data from API...")
+        with ThreadPoolExecutor() as pool:
+            results = list(pool.map(self._get_weather_by_city, self.cities.keys()))
+
+        root_logger.info("Weather data from API received!")
+        return results
+
     def save_weather_data(self, weather_data: Sequence[Weather]):
-        root_logger.info(f"Saving weather data to {self._output_weather_data_dir}...")
+        root_logger.info(f"Saving weather data to {self.output_weather_data_dir}...")
         with ThreadPoolExecutor() as pool:
             pool.map(self._save_weather_data_to_json, weather_data)
         root_logger.info("Weather data saved!")
 
 
+@dataclass
 class DataCalculationTask:
-    def __init__(
-            self,
-            *,
-            input_weather_data_dir: Path,
-            output_analyze_dir: Path,
-            processes_count: int | None = None,
-    ) -> None:
-        self._input_weather_data_dir = input_weather_data_dir
-        self._output_analyze_dir = output_analyze_dir
-        self._processes_count = cpu_count() - 1 if processes_count is None else processes_count
-
-    @property
-    def input_weather_data_dir(self) -> Path:
-        return self._input_weather_data_dir
-
-    @property
-    def output_analyze_dir(self) -> Path:
-        return self._output_analyze_dir
+    input_weather_data_dir: Path
+    output_analyze_dir: Path
+    processes_count: int = cpu_count() - 1
 
     def _run_analyze_command(self, weather_data_path: Path) -> None:
-        output_analyze_path = self._output_analyze_dir / weather_data_path.name
+        output_analyze_path = self.output_analyze_dir / weather_data_path.name
         string_command = "python3 external/analyzer.py -i {path_to_weather_data} -o {output_analyze_path}".format(
             path_to_weather_data=weather_data_path,
             output_analyze_path=output_analyze_path,
@@ -126,7 +77,7 @@ class DataCalculationTask:
             raise AnalyzeError(ANALYZE_COMMAND_ERROR_MESSAGE_TEMPLATE.format(error=err, exit_code=exit_code))
 
     def _get_json_paths_with_weather_data(self) -> Sequence[Path]:
-        return [self._input_weather_data_dir / fn for fn in os.listdir(self._input_weather_data_dir)]
+        return [self.input_weather_data_dir / fn for fn in os.listdir(self.input_weather_data_dir)]
 
     def _analyzing_weather(self, weather_data_path: Path) -> None:
         try:
@@ -139,12 +90,13 @@ class DataCalculationTask:
     def calculate_weather(self) -> None:
         root_logger.info("Start analyzing weather data to...")
         json_paths_with_weather_data = self._get_json_paths_with_weather_data()
-        with Pool(processes=self._processes_count) as pool:
+        with Pool(processes=self.processes_count) as pool:
             pool.map(self._analyzing_weather, json_paths_with_weather_data)
 
         root_logger.info("Analyzing weather done!")
 
 
+@dataclass
 class DataAggregationTask:
     AVERAGE_COLUMN_NAME = "Average"
     RATING_COLUMN_NAME = "Rating"
@@ -152,27 +104,11 @@ class DataAggregationTask:
     AVG_TEMPERATURE_ROW_NAME = "Temperature, average"
     NO_PRECIPITATION_ROW_NAME = "No precipitation, hours"
 
-    def __init__(
-            self,
-            *,
-            input_analyze_dir: Path,
-            output_csv_path: Path = AGGREGATED_DATA_CSV_PATH,
-            threads_count: int | None = None,
-    ) -> None:
-        self._input_analyze_dir = input_analyze_dir
-        self._output_csv_path = output_csv_path
-        self._threads_count = threads_count
-
-    @property
-    def input_analyze_dir(self) -> Path:
-        return self._input_analyze_dir
-
-    @property
-    def output_csv_path(self) -> Path:
-        return self._output_csv_path
+    input_analyze_dir: Path
+    output_csv_path: Path = AGGREGATED_DATA_CSV_PATH
 
     def _get_analyzed_weather_data_paths(self) -> Sequence[Path]:
-        return [self._input_analyze_dir / fn for fn in os.listdir(self._input_analyze_dir)]
+        return [self.input_analyze_dir / fn for fn in os.listdir(self.input_analyze_dir)]
 
     def _create_multiple_index_by_city(self, city_name: str) -> pd.MultiIndex:
         multiple_index = (
@@ -227,8 +163,6 @@ class DataAggregationTask:
         return dataframe
 
     def _clear_dataframe_sequence_from_none(self, dataframes: Sequence[pd.DataFrame | None]) -> Sequence[pd.DataFrame]:
-        # На использование такой конструкции -> list(filter(_filter_func_replace_none, dataframes))
-        # ругался mypy, я долго гугли и карпел, но не смог найти решения. Поэтому закостылил)
         result = []
         for df in dataframes:
             if isinstance(df, pd.DataFrame):
@@ -237,17 +171,17 @@ class DataAggregationTask:
 
     def aggregate_analyze_data(self) -> Sequence[pd.DataFrame]:
         analyzed_weather_data_paths = self._get_analyzed_weather_data_paths()
-        with ThreadPoolExecutor(max_workers=self._threads_count) as pool:
-            pool_results = list(pool.map(self._create_dataframe, analyzed_weather_data_paths))
-            city_dataframes = self._clear_dataframe_sequence_from_none(dataframes=pool_results)
-            return city_dataframes
+        results = list(map(self._create_dataframe, analyzed_weather_data_paths))
+        city_dataframes = self._clear_dataframe_sequence_from_none(dataframes=results)
+        return city_dataframes
 
     def save_aggregated_data(self, aggregated_data: Sequence[pd.DataFrame]) -> None:
         sorted_aggregated_data = sorted(aggregated_data, key=_filter_func_by_rating, reverse=True)
         result_df = pd.concat(sorted_aggregated_data, axis=0)
-        result_df.to_csv(self._output_csv_path, sep=";", float_format='%.3f', decimal=",")
+        result_df.to_csv(self.output_csv_path, sep=";", float_format='%.3f', decimal=",")
 
 
+@dataclass
 class DataAnalyzingTask:
     CONCLUSION_TEMPLATE = "Города благоприятные для поездки:\n{city_names}"
 
@@ -294,19 +228,19 @@ def main():
     data_fetching_task = DataFetchingTask(output_weather_data_dir=SAVE_JSON_DIR)
     weather_data = data_fetching_task.fetching_weather_data()
     data_fetching_task.save_weather_data(weather_data=weather_data)
-    # Calculation
-    data_calculation_task = DataCalculationTask(
-        input_weather_data_dir=SAVE_JSON_DIR,
-        output_analyze_dir=ANALYZE_DIR,
-    )
-    data_calculation_task.calculate_weather()
-    # Aggregation
-    data_aggregation_task = DataAggregationTask(input_analyze_dir=ANALYZE_DIR)
-    aggregated_data = data_aggregation_task.aggregate_analyze_data()
-    data_aggregation_task.save_aggregated_data(aggregated_data=aggregated_data)
-    # Conclusion
-    conclusion = DataAnalyzingTask.conclusion(aggregated_data=aggregated_data)
-    print(conclusion)
+    # # Calculation
+    # data_calculation_task = DataCalculationTask(
+    #     input_weather_data_dir=SAVE_JSON_DIR,
+    #     output_analyze_dir=ANALYZE_DIR,
+    # )
+    # data_calculation_task.calculate_weather()
+    # # Aggregation
+    # data_aggregation_task = DataAggregationTask(input_analyze_dir=ANALYZE_DIR)
+    # aggregated_data = data_aggregation_task.aggregate_analyze_data()
+    # data_aggregation_task.save_aggregated_data(aggregated_data=aggregated_data)
+    # # Conclusion
+    # conclusion = DataAnalyzingTask.conclusion(aggregated_data=aggregated_data)
+    # print(conclusion)
 
 
 if __name__ == '__main__':

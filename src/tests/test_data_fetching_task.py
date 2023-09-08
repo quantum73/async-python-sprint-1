@@ -1,17 +1,14 @@
 import os
 from collections.abc import Sequence
-from unittest.mock import patch
 
 from external.schemas import Weather
-from tests.conftest import CITIES_FOR_TEST
+from .conftest import CITIES_FOR_TEST
+from .mocks import WEATHER_EXAMPLE
 
 
 class TestDataFetchingTask:
-    @patch("tasks.DataFetchingTask._get_weather_from_api")
-    def test_fetching_weather_data(self, mock_get_weather_from_api, data_fetching_task_instance):
-        mock_get_weather_from_api.return_value = {"data": "OK"}
-        target_weather_data = [Weather(city=city, weather_data={"data": "OK"}) for city in CITIES_FOR_TEST.keys()]
-
+    def test_fetching_weather_data(self, data_fetching_task_instance):
+        target_weather_data = [Weather(city=city, weather_data=WEATHER_EXAMPLE) for city in CITIES_FOR_TEST.keys()]
         weather_data = data_fetching_task_instance.fetching_weather_data()
 
         assert isinstance(weather_data, Sequence)

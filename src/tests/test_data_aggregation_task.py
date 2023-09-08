@@ -1,5 +1,6 @@
-import numpy as np
 import pandas as pd
+
+from .mocks import EXAMPLE_DATA_FOR_AGGREGATE
 
 
 class TestDataAggregationTask:
@@ -15,16 +16,5 @@ class TestDataAggregationTask:
         assert indexes[0][0] == "Moscow"
 
     def test_save_aggregated_data(self, data_aggregation_task_instance):
-        target_data = {
-            '2022-05-18': {('Moscow', 'Temperature, average'): 13.091, (np.nan, 'No precipitation, hours'): 11.0},
-            '2022-05-19': {('Moscow', 'Temperature, average'): 10.727, (np.nan, 'No precipitation, hours'): 5.0},
-            '2022-05-20': {('Moscow', 'Temperature, average'): 11.364, (np.nan, 'No precipitation, hours'): 11.0},
-            '2022-05-21': {('Moscow', 'Temperature, average'): None, (np.nan, 'No precipitation, hours'): None},
-            '2022-05-22': {('Moscow', 'Temperature, average'): None, (np.nan, 'No precipitation, hours'): None},
-            'Average': {('Moscow', 'Temperature, average'): 11.73, (np.nan, 'No precipitation, hours'): 9.0},
-            'Rating': {('Moscow', 'Temperature, average'): 1, (np.nan, 'No precipitation, hours'): None}
-        }
-        example_of_aggregated_data = [pd.DataFrame.from_dict(target_data)]
-        data_aggregation_task_instance.save_aggregated_data(aggregated_data=example_of_aggregated_data)
-
+        data_aggregation_task_instance.save_aggregated_data(aggregated_data=EXAMPLE_DATA_FOR_AGGREGATE)
         assert data_aggregation_task_instance.output_csv_path.exists()
