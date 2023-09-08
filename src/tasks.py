@@ -11,7 +11,8 @@ from typing import Mapping, Sequence, Any
 import pandas as pd
 
 from config import (root_logger, UNEXPECTED_ERROR_MESSAGE_TEMPLATE, SAVE_JSON_DIR,
-                    ANALYZE_COMMAND_ERROR_MESSAGE_TEMPLATE, KEY_ERROR_MESSAGE_TEMPLATE, AGGREGATED_DATA_CSV_PATH)
+                    ANALYZE_COMMAND_ERROR_MESSAGE_TEMPLATE, KEY_ERROR_MESSAGE_TEMPLATE, AGGREGATED_DATA_CSV_PATH,
+                    ANALYZE_DIR)
 from external.exceptions import (AnalyzeError)
 from external.forecasting import ForecastWeatherSource, YandexWeatherAPIForecastWeatherSource
 from external.schemas import Weather, Statistic
@@ -228,19 +229,19 @@ def main():
     data_fetching_task = DataFetchingTask(output_weather_data_dir=SAVE_JSON_DIR)
     weather_data = data_fetching_task.fetching_weather_data()
     data_fetching_task.save_weather_data(weather_data=weather_data)
-    # # Calculation
-    # data_calculation_task = DataCalculationTask(
-    #     input_weather_data_dir=SAVE_JSON_DIR,
-    #     output_analyze_dir=ANALYZE_DIR,
-    # )
-    # data_calculation_task.calculate_weather()
-    # # Aggregation
-    # data_aggregation_task = DataAggregationTask(input_analyze_dir=ANALYZE_DIR)
-    # aggregated_data = data_aggregation_task.aggregate_analyze_data()
-    # data_aggregation_task.save_aggregated_data(aggregated_data=aggregated_data)
-    # # Conclusion
-    # conclusion = DataAnalyzingTask.conclusion(aggregated_data=aggregated_data)
-    # print(conclusion)
+    # Calculation
+    data_calculation_task = DataCalculationTask(
+        input_weather_data_dir=SAVE_JSON_DIR,
+        output_analyze_dir=ANALYZE_DIR,
+    )
+    data_calculation_task.calculate_weather()
+    # Aggregation
+    data_aggregation_task = DataAggregationTask(input_analyze_dir=ANALYZE_DIR)
+    aggregated_data = data_aggregation_task.aggregate_analyze_data()
+    data_aggregation_task.save_aggregated_data(aggregated_data=aggregated_data)
+    # Conclusion
+    conclusion = DataAnalyzingTask.conclusion(aggregated_data=aggregated_data)
+    print(conclusion)
 
 
 if __name__ == '__main__':
